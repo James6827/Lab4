@@ -1,0 +1,103 @@
+import machine
+import time
+
+# Setup UART for transmission
+uart = machine.UART(0, baudrate=9600, tx=machine.Pin(0), rx=machine.Pin(1))
+
+# Main loop for transmitting data
+while True:
+    message = "Hello from Pico 1"
+    uart.write(message + "\n")  # Send data
+    print(f"Sent: {message}")
+    time.sleep(2)  # Delay before sending the next message
+
+
+import machine
+import time
+
+# Setup UART
+uart = machine.UART(1, baudrate=9600, tx=machine.Pin(8), rx=machine.Pin(9))
+uart.init(bits=8, parity=None, stop=1)
+
+# Pin definitions for LEDs (traffic lights)
+green_led = machine.Pin(18, machine.Pin.OUT)
+yellow_led = machine.Pin(19, machine.Pin.OUT)
+red_led = machine.Pin(20, machine.Pin.OUT)
+
+# Pin definitions for buttons
+loop_sensor = machine.Pin(10, machine.Pin.IN, machine.Pin.PULL_UP)
+start_button = machine.Pin(11, machine.Pin.IN, machine.Pin.PULL_UP)
+
+# Variables to keep track of the current state
+state = "RED"
+car_count = 0
+too_many_cars = 5  # Set a threshold for "too many cars"
+
+def set_traffic_light(color):
+    # Turn off all LEDs
+    green_led.off()
+    yellow_led.off()
+    red_led.off()
+    
+    # Turn on the specified LED
+    if color == "GREEN":
+        green_led.on()
+    elif color == "YELLOW":
+        yellow_led.on()
+    elif color == "RED":
+        red_led.on()
+
+def check_uart_data():
+    if uart.any():
+        data = uart.read()
+        if data:
+            return data.decode('utf-8').strip()
+    return None
+
+def update_traffic_state():
+    global state, car_count
+    
+    if state == "RED":
+        set_traffic_light("GREEN")
+        state = "GREEN_A"
+        time.sleep(5)  # Green A duration
+    elif state == "GREEN_A":
+        if car_count < too_many_cars:
+            state = "GREEN_B"
+            time.sleep(5)  # Green B duration
+        else:
+            state = "YELLOW"
+    elif state == "GREEN_B":
+        state = "YELLOW"
+    elif state == "YELLOW":
+        set_traffic_light("RED")
+        state = "RED"
+        time.sleep(3)  # Yellow duration
+
+def main():
+    global car_count
+    
+    # Wait for the start button to be pressed
+    while start_button.value():
+        pass
+
+    # Main loop for traffic light control
+    while True:
+        # Check if a car is detected by the loop sensor
+        if not loop_sensor.value():  # Button pressed
+            car_count += 1
+            time.sleep(0.2)  # Debounce delay
+
+        # Update the traffic light state based on the current state and car count
+        update_traffic_state()
+
+        # Communicate with the other Pico via UART
+        uart.write(f"STATE:{state}\n")
+
+        # Read data from the other Pico
+        other_pico_state = check_uart_data()
+        if other_pico_state:
+            print(f"Received from other Pico: {other_pico_state}")
+
+# Run the main function
+main()
